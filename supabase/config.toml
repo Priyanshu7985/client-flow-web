@@ -1,0 +1,20 @@
+# Supabase CLI config. Optional — only needed if you use `supabase` CLI
+# (`supabase link` + `supabase db push`, or local `supabase start`).
+# The simplest path is to paste the migration files into the SQL Editor instead.
+project_id = "clientflow"
+
+[db]
+major_version = 15
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = [
+  "http://localhost:3000/auth/callback",
+  "https://localhost:3000/auth/callback",
+]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
