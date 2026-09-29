@@ -19,6 +19,10 @@ import {
  * authorization boundary. The service key never leaves the server.
  */
 
+/** Unknown token, or an id that doesn't belong to the token's project. Its
+ *  message is safe to show a reviewer; any other thrown error is not. */
+export class ReviewNotFoundError extends Error {}
+
 async function projectByToken(
   admin: SupabaseClient,
   token: string,
@@ -106,7 +110,7 @@ export async function addReviewFeedback(
 ): Promise<FeedbackWithReplies> {
   if (!isSupabaseConfigured) {
     const projectId = db().projects.find((p) => p.review_token === token)?.id;
-    if (!projectId) throw new Error("Invalid review link");
+    if (!projectId) throw new ReviewNotFoundError("Invalid review link");
     const feedback = await createFeedbackMutation(projectId, input, {
       type: "client",
       name: authorName,
@@ -117,7 +121,7 @@ export async function addReviewFeedback(
 
   const admin = createAdminClient();
   const project = await projectByToken(admin, token);
-  if (!project) throw new Error("Invalid review link");
+  if (!project) throw new ReviewNotFoundError("Invalid review link");
 
   const feedback = await createFeedbackMutation(
     project.id,
@@ -137,21 +141,21 @@ export async function addReviewReply(
   if (!isSupabaseConfigured) {
     const feedback = db().feedback.find((f) => f.id === feedbackId);
     const projectId = db().projects.find((p) => p.review_token === token)?.id;
-    if (!feedback || !projectId || feedback.project_id !== projectId) throw new Error("Not found");
+    if (!feedback || !projectId || feedback.project_id !== projectId) throw new ReviewNotFoundError("Feedback not found");
     await createReplyMutation(feedbackId, message, { type: "client", name: authorName, id: null });
     return;
   }
 
   const admin = createAdminClient();
   const project = await projectByToken(admin, token);
-  if (!project) throw new Error("Invalid review link");
+  if (!project) throw new ReviewNotFoundError("Invalid review link");
 
   const { data: parent } = await admin
     .from("feedback")
     .select("project_id")
     .eq("id", feedbackId)
     .maybeSingle();
-  if (!parent || parent.project_id !== project.id) throw new Error("Not found");
+  if (!parent || parent.project_id !== project.id) throw new ReviewNotFoundError("Feedback not found");
 
   await createReplyMutation(
     feedbackId,
@@ -169,13 +173,13 @@ export async function approveReviewProject(
 ): Promise<Approval> {
   if (!isSupabaseConfigured) {
     const projectId = db().projects.find((p) => p.review_token === token)?.id;
-    if (!projectId) throw new Error("Invalid review link");
+    if (!projectId) throw new ReviewNotFoundError("Invalid review link");
     return approveProjectMutation(projectId, approvedByName, note, ipHash);
   }
 
   const admin = createAdminClient();
   const project = await projectByToken(admin, token);
-  if (!project) throw new Error("Invalid review link");
+  if (!project) throw new ReviewNotFoundError("Invalid review link");
 
   return approveProjectMutation(project.id, approvedByName, note, ipHash, { client: admin });
 }

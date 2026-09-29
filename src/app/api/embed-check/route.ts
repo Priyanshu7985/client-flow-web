@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { isSafeFetchTarget, normalizeUrl } from "@/lib/utils/url";
 import { clientIp, rateLimit } from "@/lib/utils/rate-limit";
+import { safeFetch, UnsafeTargetError } from "@/lib/utils/safe-fetch";
 
 /**
  * Reports whether a URL can be embedded in an iframe by inspecting
- * X-Frame-Options and CSP frame-ancestors. Never fetches private hosts.
+ * X-Frame-Options and CSP frame-ancestors. Never fetches private hosts, even
+ * via redirects (see safeFetch).
  */
 export async function GET(request: Request) {
   const ip = clientIp(request.headers);
@@ -19,16 +21,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ embeddable: false, reason: "invalid_url" }, { status: 400 });
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method: "GET",
-      redirect: "follow",
       signal: controller.signal,
       headers: { "user-agent": "ClientFlow-EmbedCheck/1.0" },
     });
-    clearTimeout(timeout);
+    await res.body?.cancel();
 
     const xfo = (res.headers.get("x-frame-options") ?? "").toLowerCase();
     const csp = (res.headers.get("content-security-policy") ?? "").toLowerCase();
@@ -52,8 +53,13 @@ export async function GET(request: Request) {
       { embeddable, reason, status: res.status },
       { headers: { "cache-control": "public, max-age=300" } },
     );
-  } catch {
+  } catch (e) {
+    if (e instanceof UnsafeTargetError) {
+      return NextResponse.json({ embeddable: false, reason: "invalid_url" }, { status: 400 });
+    }
     // Network failure — let the client fall back to its load-timeout heuristic.
     return NextResponse.json({ embeddable: true, reason: "unknown" });
+  } finally {
+    clearTimeout(timeout);
   }
 }

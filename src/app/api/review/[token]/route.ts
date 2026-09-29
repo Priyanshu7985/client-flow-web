@@ -5,6 +5,7 @@ import {
   addReviewReply,
   approveReviewProject,
   getReviewBundle,
+  ReviewNotFoundError,
 } from "@/lib/data/review";
 import {
   approveProjectSchema,
@@ -94,8 +95,11 @@ export async function POST(
     );
     return NextResponse.json({ approval: record }, { status: 201 });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "error";
-    const status = message.toLowerCase().includes("invalid") || message.includes("not") ? 404 : 500;
-    return NextResponse.json({ error: message }, { status });
+    if (e instanceof ReviewNotFoundError) {
+      return NextResponse.json({ error: e.message }, { status: 404 });
+    }
+    // Never echo DB/internal error text to an unauthenticated reviewer.
+    console.error("[review] POST failed", e);
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
 }
